@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a0f14" />
+    <meta name="apple-mobile-web-app-title" content="QLab" />
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <title>QLab Launcher</title>
+    <style>
+      :root {
+        --bg: #05070a;
+        --text: #e6edf3;
+        --muted: #8b98a5;
+        --green: #22d164;
+        --red: #ef4444;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.5 -apple-system, system-ui, sans-serif;
+        text-align: center;
+      }
+      main { max-width: 360px; }
+      img { width: 72px; height: 72px; border-radius: 16px; }
+      h1 { font-size: 20px; margin: 16px 0 8px; }
+      p { color: var(--muted); margin: 0 0 16px; }
+      .err h1 { color: var(--red); }
+      button {
+        font: inherit;
+        font-weight: 600;
+        padding: 12px 28px;
+        border: 0;
+        border-radius: 12px;
+        background: var(--green);
+        color: #05070a;
+      }
+      [hidden] { display: none; }
+    </style>
+  </head>
+  <body>
+    <main id="box">
+      <img src="icon-192.png" alt="" />
+      <h1 id="title">Looking for the remote…</h1>
+      <p id="text"></p>
+      <button id="retry" hidden onclick="find()">Try again</button>
+    </main>
+
+    <script>
+      // The QLab Controller server publishes its current URL to an ntfy topic.
+      // This page reads the latest one and redirects. The topic comes from the
+      // URL hash (…/#qlab-xxxx) and is remembered for when the hash is lost.
+      const NTFY = 'https://ntfy.sh';
+      const URL_RE = /^http:\/\/[\d.]+:\d+$/;
+
+      function store(fn) {
+        try { return fn(); } catch { return null; }
+      }
+
+      function getTopic() {
+        const fromHash = decodeURIComponent(location.hash.slice(1));
+        if (fromHash) {
+          store(() => localStorage.setItem('topic', fromHash));
+          return fromHash;
+        }
+        return store(() => localStorage.getItem('topic'));
+      }
+
+      function show(title, text, isError) {
+        document.getElementById('title').textContent = title;
+        document.getElementById('text').textContent = text;
+        document.getElementById('box').classList.toggle('err', isError);
+        document.getElementById('retry').hidden = !isError;
+      }
+
+      async function find() {
+        const topic = getTopic();
+        if (!topic) {
+          show('No link', 'Open this page from the link or QR code the server prints on start.', true);
+          return;
+        }
+        show('Looking for the remote…', '', false);
+
+        let lines;
+        try {
+          const res = await fetch(`${NTFY}/${encodeURIComponent(topic)}/json?poll=1&since=all`, { cache: 'no-store' });
+          if (!res.ok) throw new Error(res.status);
+          lines = (await res.text()).trim().split('\n').filter(Boolean);
+        } catch {
+          show('ntfy.sh is unreachable', 'Check the internet connection, or scan the QR code in the server window.', true);
+          return;
+        }
+
+        const url = lines
+          .map((l) => store(() => JSON.parse(l)))
+          .filter((m) => m?.event === 'message' && URL_RE.test(m.message))
+          .map((m) => m.message)
+          .pop();
+
+        if (!url) {
+          show('Server not found', 'Start the server on the Mac and try again.', true);
+          return;
+        }
+
+        show('Opening…', url, false);
+        location.replace(url);
+      }
+
+      find();
+    </script>
+  </body>
+</html>
