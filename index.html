@@ -7,6 +7,7 @@
     <meta name="apple-mobile-web-app-title" content="QLab" />
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
     <title>QLab Launcher</title>
     <style>
       :root {
@@ -34,7 +35,9 @@
       h1 { font-size: 20px; margin: 16px 0 8px; }
       p { color: var(--muted); margin: 0 0 16px; }
       .err h1 { color: var(--red); }
-      button {
+      button, a.btn {
+        display: inline-block;
+        text-decoration: none;
         font: inherit;
         font-weight: 600;
         padding: 12px 28px;
@@ -52,12 +55,24 @@
       <h1 id="title">Looking for the remote…</h1>
       <p id="text"></p>
       <button id="retry" hidden onclick="find()">Try again</button>
+      <a id="open" class="btn" hidden>Open remote</a>
+      <p id="hint" hidden>
+        To open the remote with one tap, add this page to the home screen
+        (browser menu → Add to home screen).
+      </p>
     </main>
 
     <script>
       // The QLab Controller server publishes its current URL to an ntfy topic.
       // This page reads the latest one and redirects. The topic comes from the
       // URL hash (…/#qlab-xxxx) and is remembered for when the hash is lost.
+      //
+      // Redirect straight away only when started from the home-screen icon
+      // (manifest start_url is ./?go, or a standalone window). In a normal tab
+      // show a button instead: an instant redirect left no moment to save the
+      // page, and the browser saved the remote's changing address.
+      const AUTO = new URLSearchParams(location.search).has('go')
+        || matchMedia('(display-mode: standalone)').matches;
       const NTFY = 'https://ntfy.sh';
       const URL_RE = /^http:\/\/[\d.]+:\d+$/;
 
@@ -79,6 +94,8 @@
         document.getElementById('text').textContent = text;
         document.getElementById('box').classList.toggle('err', isError);
         document.getElementById('retry').hidden = !isError;
+        document.getElementById('open').hidden = true;
+        document.getElementById('hint').hidden = true;
       }
 
       async function find() {
@@ -110,8 +127,16 @@
           return;
         }
 
-        show('Opening…', url, false);
-        location.replace(url);
+        if (AUTO) {
+          show('Opening…', url, false);
+          location.replace(url);
+          return;
+        }
+        show('Remote found', url, false);
+        const open = document.getElementById('open');
+        open.href = url;
+        open.hidden = false;
+        document.getElementById('hint').hidden = false;
       }
 
       find();
